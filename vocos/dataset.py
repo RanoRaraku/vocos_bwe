@@ -5,6 +5,7 @@ import torch
 import torchaudio
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import Dataset, DataLoader
+from bwe.g711 import G711Decoder, G711Encoder
 
 torch.set_num_threads(1)
 
@@ -45,6 +46,7 @@ class VocosDataset(Dataset):
         self.sampling_rate = cfg.sampling_rate
         self.num_samples = cfg.num_samples
         self.train = train
+        self.inputs_transforms = [G711Encoder(), G711Decoder()]
 
     def __len__(self) -> int:
         return len(self.filelist)
@@ -56,7 +58,8 @@ class VocosDataset(Dataset):
             # mix to mono
             y = y.mean(dim=0, keepdim=True)
         gain = np.random.uniform(-1, -6) if self.train else -3
-        y, _ = torchaudio.sox_effects.apply_effects_tensor(y, sr, [["norm", f"{gain:.2f}"]])
+        #y, _ = torchaudio.sox_effects.apply_effects_tensor(y, sr, [["norm", f"{gain:.2f}"]])
+        y = torchaudio.functional.gain(y, gain)
         if sr != self.sampling_rate:
             y = torchaudio.functional.resample(y, orig_freq=sr, new_freq=self.sampling_rate)
         if y.size(-1) < self.num_samples:
@@ -70,4 +73,9 @@ class VocosDataset(Dataset):
             # During validation, take always the first segment for determinism
             y = y[:, : self.num_samples]
 
-        return y[0]
+        # Obtain narrow-band audio
+        z = y
+        for tnfm in self.inputs_transforms:
+            z = tnfm(z)
+
+        return  y[0], z[0]
