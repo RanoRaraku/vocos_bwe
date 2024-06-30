@@ -1,4 +1,3 @@
-pytorch_lightning==1.8.6
 jsonargparse[signatures]
 transformers
 matplotlib
