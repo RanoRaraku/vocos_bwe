@@ -4,11 +4,10 @@ from vocos.models import VocosBackbone
 from data.feature_extractors import MelSpectrogramFeatures
 import yaml
 
-config_file_path = 'configs/vocos.yaml'
-with open(config_file_path, 'r') as file:
-    config = yaml.safe_load(file)
 
-if __name__ == "__main__":
+
+
+def main(config):
     model = VocosExp(
         feature_extractor = MelSpectrogramFeatures(**config['model']['init_args']['feature_extractor']['init_args']),
         backbone = VocosBackbone(**config['model']['init_args']['backbone']['init_args']),
@@ -20,3 +19,13 @@ if __name__ == "__main__":
         mrd_loss_coeff = float(config['model']['init_args']['mrd_loss_coeff']),
         pretrain_mel_steps = int(config['model']['init_args']['pretrain_mel_steps']),  # 0 means GAN objective from the first iteration
     )
+
+
+if __name__ == "__main__":
+
+    config_file_path = 'configs/vocos.yaml'
+
+    with open(config_file_path, 'r') as file:
+        config = yaml.safe_load(file)
+
+    main(config)
