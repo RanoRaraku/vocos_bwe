@@ -1,20 +1,20 @@
 import math
 
 import numpy as np
-import pytorch_lightning as pl
 import torch
 import torchaudio
-import transformers
+from torchtune.modules import get_cosine_schedule_with_warmup
 
 from vocos.discriminators import MultiPeriodDiscriminator, MultiResolutionDiscriminator
-from vocos.feature_extractors import FeatureExtractor
+from data.feature_extractors import FeatureExtractor
 from vocos.heads import FourierHead
 from vocos.helpers import plot_spectrogram_to_numpy
 from vocos.loss import DiscriminatorLoss, GeneratorLoss, FeatureMatchingLoss, MelSpecReconstructionLoss
 from vocos.models import Backbone
 from vocos.modules import safe_log
 
-class VocosExp(pl.LightningModule):
+
+class VocosExp(torch.nn.Module):
     # noinspection PyUnusedLocal
     def __init__(
         self,
@@ -81,10 +81,10 @@ class VocosExp(pl.LightningModule):
         opt_gen = torch.optim.AdamW(gen_params, lr=self.hparams.initial_learning_rate, betas=(0.8, 0.9))
 
         max_steps = self.trainer.max_steps // 2  # Max steps per optimizer
-        scheduler_disc = transformers.get_cosine_schedule_with_warmup(
+        scheduler_disc = get_cosine_schedule_with_warmup(
             opt_disc, num_warmup_steps=self.hparams.num_warmup_steps, num_training_steps=max_steps,
         )
-        scheduler_gen = transformers.get_cosine_schedule_with_warmup(
+        scheduler_gen = get_cosine_schedule_with_warmup(
             opt_gen, num_warmup_steps=self.hparams.num_warmup_steps, num_training_steps=max_steps,
         )
 
@@ -312,69 +312,3 @@ class VocosExp(pl.LightningModule):
 
         if self.hparams.decay_mel_coeff:
             self.mel_loss_coeff = self.base_mel_coeff * mel_loss_coeff_decay(self.global_step + 1)
-
-
-class VocosEncodecExp(VocosExp):
-    """
-    VocosEncodecExp is a subclass of VocosExp that overrides the parent experiment to function as a conditional GAN.
-    It manages an additional `bandwidth_id` attribute, which denotes a learnable embedding corresponding to
-    a specific bandwidth value of EnCodec. During training, a random bandwidth_id is generated for each step,
-    while during validation, a fixed bandwidth_id is used.
-    """
-
-    def __init__(
-        self,
-        feature_extractor: FeatureExtractor,
-        backbone: Backbone,
-        head: FourierHead,
-        sample_rate: int,
-        initial_learning_rate: float,
-        num_warmup_steps: int,
-        mel_loss_coeff: float = 45,
-        mrd_loss_coeff: float = 1.0,
-        pretrain_mel_steps: int = 0,
-        decay_mel_coeff: bool = False,
-        evaluate_utmos: bool = False,
-        evaluate_pesq: bool = False,
-        evaluate_periodicty: bool = False,
-    ):
-        super().__init__(
-            feature_extractor,
-            backbone,
-            head,
-            sample_rate,
-            initial_learning_rate,
-            num_warmup_steps,
-            mel_loss_coeff,
-            mrd_loss_coeff,
-            pretrain_mel_steps,
-            decay_mel_coeff,
-            evaluate_utmos,
-            evaluate_pesq,
-            evaluate_periodicty,
-        )
-        # Override with conditional discriminators
-        self.multiperioddisc = MultiPeriodDiscriminator(num_embeddings=len(self.feature_extractor.bandwidths))
-        self.multiresddisc = MultiResolutionDiscriminator(num_embeddings=len(self.feature_extractor.bandwidths))
-
-    def training_step(self, *args):
-        bandwidth_id = torch.randint(low=0, high=len(self.feature_extractor.bandwidths), size=(1,), device=self.device,)
-        output = super().training_step(*args, bandwidth_id=bandwidth_id)
-        return output
-
-    def validation_step(self, *args):
-        bandwidth_id = torch.tensor([0], device=self.device)
-        output = super().validation_step(*args, bandwidth_id=bandwidth_id)
-        return output
-
-    def validation_epoch_end(self, outputs):
-        if self.global_rank == 0:
-            *_, audio_in, _ = outputs[0].values()
-            # Resynthesis with encodec for reference
-            self.feature_extractor.encodec.set_target_bandwidth(self.feature_extractor.bandwidths[0])
-            encodec_audio = self.feature_extractor.encodec(audio_in[None, None, :])
-            self.logger.experiment.add_audio(
-                "encodec", encodec_audio[0, 0].data.cpu().numpy(), self.global_step, self.hparams.sample_rate,
-            )
-
-        super().validation_epoch_end(outputs)
