@@ -3,12 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Sequence, Union
 
-from manifest import (
-    Manifest,
-    download_file,
-    extract_tar,
-    md5_checksum,
-)
+from manifest import Manifest, download_file, extract_tar, md5_checksum
 
 
 def setup_logger():
@@ -70,17 +65,6 @@ def get_parser():
         help="Number of parallel jobs manifest preparation default=8",
     )
     parser.add_argument(
-        "--output_format",
-        default="json",
-        choices=["json"],
-        help="Output format for prepared LibriSpeech",
-    )
-    parser.add_argument(
-        "--skip_download_data",
-        action="store_true",
-        help="Skip downloading data and prepare manifest from existing files",
-    )
-    parser.add_argument(
         "--skip_prepare_manifests",
         action="store_true",
         help="Skip preparing manifests and only download the dataset",
@@ -91,9 +75,9 @@ def get_parser():
 
 class LibriSpeech:
     def __init__(self, args):
+        # super().__init__(Manifest)
         setup_logger()
 
-        self.skip_download_data = args.skip_download_data
         self.skip_prepare_manifests = args.skip_prepare_manifests
         self.data_dir = Path(args.data_dir).absolute()
         self.dataset_parts = (
@@ -104,9 +88,15 @@ class LibriSpeech:
         self.source_url = args.source_url
         self.force_download = args.force_download
         self.num_jobs = args.num_jobs
-        self.output_format = args.output_format
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _get_filestem(fpath: Union[str, Path]) -> Path:
+        fpath = Path(fpath).name
+        for suffix in Path(fpath).suffixes:
+            fpath = fpath.removesuffix(suffix)
+        return Path(fpath)
 
     def download_data(self) -> None:
         """
@@ -118,17 +108,17 @@ class LibriSpeech:
             or a list of splits (e.g. "dev-clean") to download.
         :param force_download: Bool, if True, download the tars no matter if the tars exist.
         """
-        source_url: str = self.source_url
-        data_dir: Union[str, Path] = self.data_dir
-        dataset_parts: Union[str, Sequence[str]] = self.dataset_parts
-        force_download: bool = self.force_download
+        data_dir = self.data_dir
+        dataset_parts = self.dataset_parts
 
         # Download
         logging.info("Downloading LibriSpeech")
         for part in dataset_parts:
-            url = source_url + part + ".tar.gz"
+            url = self.source_url + part + ".tar.gz"
             filepath = data_dir / f"{part}.tar.gz"
-            download_file(url=url, filepath=filepath, force_download=force_download)
+            download_file(
+                url=url, filepath=filepath, force_download=self.force_download
+            )
 
         # Check MD5
         logging.info("Verifying checksums")
@@ -172,13 +162,12 @@ class LibriSpeech:
             subdir = data_dir / Path(part)
             trans_files = subdir.rglob(f"*.{trans_ext}")
             audio_files = subdir.rglob(f"*[0-9].{audio_ext}")
-            audio_dict = {
-                str(f.name).removesuffix(f".{audio_ext}"): f.absolute()
-                for f in audio_files
-            }
 
-            # Parse trans files into a dict{file_id: transcript}
-            trans_dict = {}
+            trans_dict, audio_dict, speaker_dict = {}, {}, {}
+            for f in audio_files:
+                fstem = str(self._get_filestem(f))
+                audio_dict[fstem] = f.absolute()
+                speaker_dict[fstem] = str(f.name).split("-")[0]
             for trans_file in trans_files:
                 trans_dict.update(self.parse_trans_file(trans_file))
 
@@ -194,6 +183,7 @@ class LibriSpeech:
                 dict(
                     audio_file=audio_dict[valid_id],
                     transcript=trans_dict[valid_id],
+                    speaker=speaker_dict[valid_id],
                 )
                 for valid_id in valid_ids
             ]
@@ -205,18 +195,16 @@ class LibriSpeech:
             logging.info("Validating manifest")
             manifest.validate(num_jobs)
 
-            breakpoint()
             # Save manifests
             logging.info(
-                f"Saving librispeech-{part}.json manifest to disk, "
-                f"contains {len(manifest)} entries"
+                f"Saving librispeech-{part}.jsonl manifest to disk, "
+                f"contains {manifest.length} entries"
             )
-            manifest.save(self.data_dir / f"librispeech-{part}.{audio_ext}.json")
+            manifest.save(self.data_dir / f"librispeech-{part}.{audio_ext}.jsonl")
 
     def run(self):
         # Download and extract
-        if not self.skip_download_data:
-            self.download_data()
+        # self.download_data()
 
         # Prepare and save manifests
         if not self.skip_prepare_manifests:

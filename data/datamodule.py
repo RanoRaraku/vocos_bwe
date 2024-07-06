@@ -13,6 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 
 from vocos.feature_extractors import MelSpectrogramFeatures
 
+
 class BWEDataset(torch.utils.data.Dataset):
     """
     The PyTorch Dataset for the BandWidth Extension.
@@ -66,8 +67,9 @@ class BWEDataset(torch.utils.data.Dataset):
         self.targets_extractor = targets_extractor()
         self.inputs_extractor = inputs_extractor()
         self.cut_transforms = cut_transforms if cut_transforms else []
-        self.inputs_transforms = inputs_transforms if inputs_transforms else [G711Encoder(), G711Decoder()]
-
+        self.inputs_transforms = (
+            inputs_transforms if inputs_transforms else [G711Encoder(), G711Decoder()]
+        )
 
         # This attribute is a workaround to constantly growing HDF5 memory
         # throughout the epoch. It regularly closes open file handles to
@@ -99,13 +101,13 @@ class BWEDataset(torch.utils.data.Dataset):
         audio_target = torch.from_numpy(audio_target)
 
         # Generate targets 1st
-        #target_feats = self.targets_extractor(audios)
+        # target_feats = self.targets_extractor(audios)
 
         # Apply codecs and generate inputs
         audio_input = audio_target
         for tnfm in self.inputs_transforms:
             audio_input = tnfm(audio_input)
-        #input_feats = self.inputs_extractor(audios)
+        # input_feats = self.inputs_extractor(audios)
 
         # Collate batch
         batch = {
@@ -163,12 +165,12 @@ class LibriTTSDataModule:
                 "gap": 1.0,
                 "shuffle": True,
                 "return_cuts": False,
-                "num_workers": 3
+                "num_workers": 3,
             }
         )
         args.update(kwargs)
 
-        return args        
+        return args
 
     def train_dataloader(
         self,

@@ -1,68 +1,81 @@
 #!/usr/bin/env python
 
+import hashlib
 import json
 import multiprocessing
-from pathlib import Path
-from typing import Dict, List, Union
-import sox
-import hashlib
 import tarfile
+from pathlib import Path
+from typing import Callable, Dict, Iterable, List, Type, TypeVar, Union
+
 import requests
+import sox
 from tqdm.auto import tqdm
+
+MANIFEST_TYPE = TypeVar("MANIFEST_TYPE", bound="Manifest")
 
 
 class Manifest:
-    def __init__(self):
+    """
+    The format is a dictionary, i.e.:
+    {
+        utt_id: {
+            "transcript": "BLA BLA BLA ...",
+            "channels": 1,
+            "sample_rate": 16000,
+            "bitdepth": 16,
+            "bitrate": 155000.0,
+            "duration": 11.21,
+            "num_samples": 179360,
+            "encoding": "FLAC",
+            "silent": false,
+            "file": "/data/LibriSpeech/test-clean/5683/32879/5683-32879-0004.flac",
+            "speaker": "1272-128104",
+        },
+        ...
+    }
+    """
+
+    def __init__(self) -> None:
         self.__dict__ = {}
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Manifest object at {hex(id(self))}>"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__repr__()
 
     def __iter__(self):
         for item in self.__dict__.items():
             yield item
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Dict:
         return self.__dict__[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Dict) -> None:
         self.__dict__[key] = value
 
     @staticmethod
     def _process_utterance(data: Dict) -> Dict:
         """
-        A single-thread processing function that operates on a single data item (dict). 
+        A single-thread processing function that operates on a single data item (dict).
         Expected to be called by multiprocessing pool in `prepare_manifest`. The input
         is of following format:
         {
             'audio_file': name of audio with extension,
             'transcript': transcript as string,
-        }
-        The output format is:
-        {
-            utt_id: {
-                "transcript": "BLA BLA BLA ...",
-                "channels": 1,
-                "sample_rate": 16000.0,
-                "bitdepth": 16,
-                "bitrate": 155000.0,
-                "duration": 11.21,
-                "num_samples": 179360,
-                "encoding": "FLAC",
-                "fpath": "/datasets/LibriSpeech/test-clean/5683/32879/5683-32879-0004.flac"
-                }
-            }
+            'speaker': speaker_id,
         }
         """
-        audio_file, trans = data.values()
+        audio_file, trans, speaker = data.values()
         audio_file = Path(audio_file)
 
         utt_id = Path(audio_file).name
         file_info = sox.file_info.info(str(audio_file))
-        file_info["fpath"] = str(audio_file)
+        file_info["file"] = str(audio_file)
+        file_info["sample_rate"] = int(file_info["sample_rate"])
+        file_info["speaker"] = speaker
+        file_info["feats"] = None
+        del file_info["bitrate"]
 
         return {
             utt_id: {
@@ -72,32 +85,19 @@ class Manifest:
         }
 
     @classmethod
-    def from_items(cls, data: List[Dict], num_jobs: int = 8):
+    def from_items(
+        cls: Type[MANIFEST_TYPE], data: List[Dict], num_jobs: int = 8
+    ) -> MANIFEST_TYPE:
         """
         Prepare a manifest given a data object of following structure:
         [
             {
                 'audio_file': name of audio with extension,
                 'transcript': transcript as string,
-            }
-        ]
-
-        The output format is a dictionary, i.e.:
-        {
-            utt_id: {
-                "transcript": "BLA BLA BLA ...",
-                "channels": 1,
-                "sample_rate": 16000.0,
-                "bitdepth": 16,
-                "bitrate": 155000.0,
-                "duration": 11.21,
-                "num_samples": 179360,
-                "encoding": "FLAC",
-                "silent": false,
-                "fpath": "test-clean/5683/32879/5683-32879-0004.flac"
+                'speaker': speaker_id,
             },
             ...
-        }
+        ]
         """
         obj = cls()
 
@@ -111,9 +111,9 @@ class Manifest:
         return obj
 
     @classmethod
-    def load(cls, fpath: Union[str, Path]):
+    def load(cls: Type[MANIFEST_TYPE], fpath: Union[str, Path]) -> MANIFEST_TYPE:
         obj = cls()
-        with open(fpath, 'r') as fh:
+        with open(fpath, "r") as fh:
             if str(fpath).endswith("json"):
                 obj = json.load(fh)
             elif str(fpath).endswith("jsonl"):
@@ -133,12 +133,12 @@ class Manifest:
                 json.dump(data, fp, indent=2)
             elif str(fpath).endswith("jsonl"):
                 for item in data.items():
-                    fp.write(json.dumps(item) + '\n')
+                    fp.write(json.dumps(item) + "\n")
             else:
                 ValueError(f"Unexpected manifest extension {fpath}")
 
     @classmethod
-    def _validate(cls, items):
+    def _validate(cls: Type[MANIFEST_TYPE], items: Dict[str, Dict]) -> None:
         """
         A single-thread validation routine. Expected to be called by `validate_manifest`
         multiprocessing pool.
@@ -167,7 +167,7 @@ class Manifest:
         # Check there are no duplicate items
         assert len(set(files)) == len(files), "duplicate items in manifest"
 
-    def validate(self, num_jobs: int = 8):
+    def validate(self, num_jobs: int = 8) -> None:
         """
         Validate manifest:
             1) all audio files exist
@@ -176,12 +176,29 @@ class Manifest:
             4) there are no duplicate audio files
         """
         with multiprocessing.Pool(num_jobs) as pool:
-            pool.apply_async(self._validate, [item for item in self.__dict__.items()])    
+            pool.apply_async(self._validate, [item for item in self.__dict__.items()])
 
-    @property    
-    def length(self):
+    @property
+    def length(self) -> int:
         """The 'value' property getter."""
         return len(self.__dict__)
+
+    @property
+    def ids(self) -> List[str]:
+        return list(self.__dict__.keys())
+
+    @property
+    def files(self) -> List[str]:
+        return [f["file"] for f in self.__dict__.values()]
+
+    def split(self, num_parts: int = None) -> List[MANIFEST_TYPE]:
+        pass
+
+    def filter(self, fnc: Callable) -> MANIFEST_TYPE:
+        pass
+
+    def merge(self, manifest: Iterable[MANIFEST_TYPE]) -> None:
+        pass
 
 
 def download_file(
