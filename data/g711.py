@@ -36,7 +36,6 @@ class G711Encoder(torch.nn.Module):
         self.downsample = Resample(self.source_freq, self.target_freq)
         self.mulaw_enc = MuLawEncoding(self.quantization_steps)
 
-
     def g711encoder_defaults(self, **kwargs):
         """Return a dict containing target audio encoding parameters."""
         params = dict(
@@ -102,7 +101,6 @@ class G711Decoder(torch.nn.Module):
         self.mulaw_dec = MuLawDecoding(self.quantization_steps)
         self.upsample = Resample(self.target_freq, self.source_freq)
 
-
     def g711decoder_defaults(self, **kwargs):
         """Return a dict containing target audio encoding parameters."""
         params = dict(
@@ -134,5 +132,3 @@ class G711Decoder(torch.nn.Module):
         e = self.upsample(e)
 
         return e
-
-
