@@ -11,10 +11,10 @@ import requests
 import sox
 from tqdm.auto import tqdm
 
-MANIFEST_TYPE = TypeVar("MANIFEST_TYPE", bound="Manifest")
+MANIFEST_TYPE = TypeVar("MANIFEST_TYPE", bound="AudioManifest")
 
 
-class Manifest:
+class AudioManifest:
     """
     The format is a dictionary, i.e.:
     {
@@ -74,7 +74,6 @@ class Manifest:
         file_info["file"] = str(audio_file)
         file_info["sample_rate"] = int(file_info["sample_rate"])
         file_info["speaker"] = speaker
-        file_info["feats"] = None
         del file_info["bitrate"]
 
         return {
@@ -112,12 +111,14 @@ class Manifest:
 
     @classmethod
     def load(cls: Type[MANIFEST_TYPE], fpath: Union[str, Path]) -> MANIFEST_TYPE:
-        obj = cls()
         with open(fpath, "r") as fh:
             if str(fpath).endswith("json"):
                 obj = json.load(fh)
             elif str(fpath).endswith("jsonl"):
-                obj = [json.loads(line.strip()) for line in fh]
+                obj = cls()
+                for line in fh:
+                    item = json.loads(line.strip())
+                    obj[item[0]] = item[1]
             else:
                 ValueError(f"Unexpected manifest extension {fpath}")
 

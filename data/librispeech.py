@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Sequence, Union
 
-from manifest import Manifest, download_file, extract_tar, md5_checksum
+from manifest import AudioManifest, download_file, extract_tar, md5_checksum
 
 
 def setup_logger():
@@ -54,15 +54,15 @@ def get_parser():
         help="Source URL to download dataset from, default=www.openslr.org",
     )
     parser.add_argument(
-        "--force_download",
-        action="store_true",
-        help="Force download in case files exist",
-    )
-    parser.add_argument(
         "--num_jobs",
         default=8,
         type=int,
         help="Number of parallel jobs manifest preparation default=8",
+    )
+    parser.add_argument(
+        "--skip_download",
+        action="store_true",
+        help="Skip preparing manifests and only download the dataset",
     )
     parser.add_argument(
         "--skip_prepare_manifests",
@@ -79,6 +79,7 @@ class LibriSpeech:
         setup_logger()
 
         self.skip_prepare_manifests = args.skip_prepare_manifests
+        self.skip_download = args.skip_download
         self.data_dir = Path(args.data_dir).absolute()
         self.dataset_parts = (
             args.dataset_parts
@@ -86,7 +87,6 @@ class LibriSpeech:
             else [args.dataset_parts]
         )
         self.source_url = args.source_url
-        self.force_download = args.force_download
         self.num_jobs = args.num_jobs
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -106,7 +106,6 @@ class LibriSpeech:
         :param data_dir: str|Path, the path of the dir to storage the dataset.
         :param dataset_parts: "librispeech", "mini_librispeech",
             or a list of splits (e.g. "dev-clean") to download.
-        :param force_download: Bool, if True, download the tars no matter if the tars exist.
         """
         data_dir = self.data_dir
         dataset_parts = self.dataset_parts
@@ -116,9 +115,7 @@ class LibriSpeech:
         for part in dataset_parts:
             url = self.source_url + part + ".tar.gz"
             filepath = data_dir / f"{part}.tar.gz"
-            download_file(
-                url=url, filepath=filepath, force_download=self.force_download
-            )
+            download_file(url=url, filepath=filepath, force_download=True)
 
         # Check MD5
         logging.info("Verifying checksums")
@@ -190,7 +187,7 @@ class LibriSpeech:
 
             # Create manifest
             logging.info("Generating manifest")
-            manifest = Manifest.from_items(input_data, num_jobs)
+            manifest = AudioManifest.from_items(input_data, num_jobs)
 
             logging.info("Validating manifest")
             manifest.validate(num_jobs)
@@ -204,7 +201,8 @@ class LibriSpeech:
 
     def run(self):
         # Download and extract
-        # self.download_data()
+        if not self.skip_download:
+            self.download_data()
 
         # Prepare and save manifests
         if not self.skip_prepare_manifests:
