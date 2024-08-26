@@ -139,7 +139,7 @@ class AudioManifest:
                 ValueError(f"Unexpected manifest extension {fpath}")
 
     @classmethod
-    def _validate(cls: Type[MANIFEST_TYPE], items: Dict[str, Dict]) -> None:
+    def _validate(cls: Type[MANIFEST_TYPE], items: Dict[str, Dict]) -> bool:
         """
         A single-thread validation routine. Expected to be called by `validate_manifest`
         multiprocessing pool.
@@ -150,23 +150,27 @@ class AudioManifest:
             file_info = sox.file_info.info(str(fpath))
 
             # Check audio file exists
-            assert Path(fpath).is_file(), f"file {fpath} does not exist"
+            if not Path(fpath).is_file():
+                return False, f"file {fpath} does not exist"
 
             # Check transcript is not empty
-            assert item["transcript"], f"{fpath} transcript is empty"
+            if not item["transcript"]:
+                return False, f"{fpath} transcript is empty"
 
             # Check relevant audio metadata
-            assert (
-                item["original_duration"] == file_info["duration"]
-            ), f"{fpath} faulty duration"
-            assert (
-                item["original_num_samples"] == file_info["num_samples"]
-            ), f"{fpath} faulty number of samples"
+            if item["original_duration"] != file_info["duration"]:
+                return False, f"{fpath} faulty duration"
+
+            if item["original_num_samples"] != file_info["num_samples"]:
+                return False, f"{fpath} faulty number of samples"
 
             files.append(fpath)
 
         # Check there are no duplicate items
-        assert len(set(files)) == len(files), "duplicate items in manifest"
+        if len(set(files)) != len(files):
+            return False, "duplicate items in manifest"
+        
+        return True, ""
 
     def validate(self, num_jobs: int = 8) -> None:
         """
@@ -177,7 +181,11 @@ class AudioManifest:
             4) there are no duplicate audio files
         """
         with multiprocessing.Pool(num_jobs) as pool:
-            pool.apply_async(self._validate, [item for item in self.__dict__.items()])
+            val_out = pool.map(self._validate, [item for item in self.__dict__.items()])
+
+        for is_ok, msg in val_out:
+            assert is_ok, msg
+        
 
     @property
     def length(self) -> int:
