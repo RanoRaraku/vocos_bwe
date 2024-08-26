@@ -1,0 +1,3 @@
+cleanup README
+check dataloader works
+build train.py
