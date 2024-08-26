@@ -16,7 +16,7 @@ class DataConfig:
     manifests: List[str]
     batch_size: int
     num_workers: int
-    num_samples: int  # WTF is this
+    num_samples: int
     sampling_rate: int
 
 
