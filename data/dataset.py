@@ -16,19 +16,19 @@ class DataConfig:
     manifests: List[str]
     batch_size: int
     num_workers: int
-    num_samples: int
     sampling_rate: int
-
-
+    max_samples: int
+    
 class BWEDataset(Dataset):
     def __init__(self, cfg: DataConfig, train: bool):
         self.filelist = [f for m in cfg.manifests for f in m.files]
         self.sampling_rate = cfg.sampling_rate
-        self.num_samples = cfg.num_samples
-        self.train = train
-        self.transcoding = [G711Encoder(), G711Decoder()]
+        self.max_samples = cfg.max_samples
         self.batch_size = cfg.batch_size
         self.num_workers = cfg.num_workers
+        self.train = train
+        self.transcoding = [G711Encoder(), G711Decoder()]
+
 
     def __len__(self) -> int:
         return len(self.filelist)
@@ -49,25 +49,25 @@ class BWEDataset(Dataset):
                 y, orig_freq=sr, new_freq=self.sampling_rate
             )
 
-        if y.size(-1) < self.num_samples:
-            pad_length = self.num_samples - y.size(-1)
+        if y.size(-1) < self.max_samples:
+            pad_length = self.max_samples - y.size(-1)
             padding_tensor = y.repeat(1, 1 + pad_length // y.size(-1))
             y = torch.cat((y, padding_tensor[:, :pad_length]), dim=1)
         elif self.train:
-            start = np.random.randint(low=0, high=y.size(-1) - self.num_samples + 1)
-            y = y[:, start : start + self.num_samples]
+            start = np.random.randint(low=0, high=y.size(-1) - self.max_samples + 1)
+            y = y[:, start : start + self.max_samples]
         else:
             # During validation, take always the first segment for determinism
-            y = y[:, : self.num_samples]
+            y = y[:, : self.max_samples]
 
         # Obtain narrow-band audio
-        z = y.clone().detach()
+        x = y.clone().detach()
         for tnfm in self.transcoding:
-            z = tnfm(z)
+            x = tnfm(x)
 
-        return y[0], z[0]
+        return x[0], y[0]
 
-    def get_dataloder(self) -> DataLoader:
+    def to_dataloder(self) -> DataLoader:
         return DataLoader(
             self,
             batch_size=self.batch_size,

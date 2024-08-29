@@ -3,7 +3,7 @@ from vocos.heads import ISTFTHead
 from vocos.models import VocosBackbone
 from data.feature_extractors import MelSpectrogramFeatures
 import yaml
-
+from data.dataset import BWEDataset, DataConfig
 
 
 
@@ -19,6 +19,15 @@ def main(config):
         mrd_loss_coeff = float(config['model']['init_args']['mrd_loss_coeff']),
         pretrain_mel_steps = int(config['model']['init_args']['pretrain_mel_steps']),  # 0 means GAN objective from the first iteration
     )
+    
+      
+    train_cfg = DataConfig(**config['data']['init_args']['train_params'])
+    train_dset = BWEDataset(train_cfg, True)
+    train_dloader = train_dset.to_dataloder()
+
+    val_cfg = DataConfig(**config['data']['init_args']['val_params'])
+    val_dset = BWEDataset(val_cfg, False)
+    val_dloader = val_dset.to_dataloder()
 
 
 if __name__ == "__main__":

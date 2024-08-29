@@ -22,12 +22,9 @@ class AudioManifest:
             "transcript": "BLA BLA BLA ...",
             "channels": 1,
             "sample_rate": 16000,
-            "bitdepth": 16,
-            "bitrate": 155000.0,
             "duration": 11.21,
             "num_samples": 179360,
             "encoding": "FLAC",
-            "silent": false,
             "file": "/data/LibriSpeech/test-clean/5683/32879/5683-32879-0004.flac",
             "speaker": "1272-128104",
         },
@@ -75,6 +72,7 @@ class AudioManifest:
         file_info["sample_rate"] = int(file_info["sample_rate"])
         file_info["speaker"] = speaker
         del file_info["bitrate"]
+        del file_info["bitdepth"]
 
         return {
             utt_id: {

@@ -5,16 +5,16 @@ data:
   class_path: vocos.dataset.VocosDataModule
   init_args:
     train_params:
-      filelist_path: filelist.train
-      sampling_rate: 24000
-      num_samples: 16384
+      manifests: ['librispeech-train-clean-100.flac.json']
+      sampling_rate: 16000
+      max_samples: 16384
       batch_size: 16
       num_workers: 2
 
     val_params:
-      filelist_path: filelist.val
-      sampling_rate: 24000
-      num_samples: 48384
+      manifests: ['librispeech-dev-clean.flac.json']
+      sampling_rate: 16000
+      max_samples: 48384
       batch_size: 10
       num_workers: 2
 
@@ -36,7 +36,7 @@ model:
     feature_extractor:
       class_path: vocos.feature_extractors.MelSpectrogramFeatures
       init_args:
-        sample_rate: 24000
+        sample_rate: 16000
         n_fft: 1024
         hop_length: 256
         n_mels: 100
